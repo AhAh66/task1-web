@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine Image Model</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        #webcam-container {
+            margin-top: 20px;
+        }
+        #label-container {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #555;
+        }
+        #counter-container {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teachable Machine Image Model</h1>
+    <button type="button" onclick="init()">Start Detection</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+
+    <!-- Counter display -->
+    <div id="counter-container">
+        Total Detections: <span id="counter">0</span>
+    </div>
+
+    <!-- Reset button -->
+    <button type="button" onclick="resetCounter()">Reset Counter</button>
+
+    <script>
+        const URL = "https://teachablemachine.withgoogle.com/models/PA5r0Gbmh/";
+        let model, webcam, labelContainer, maxPredictions;
+
+        // Load the image model and setup the webcam
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            // Load model and metadata
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            // Setup webcam
+            const flip = true;
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup();
+            await webcam.play();
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                labelContainer.appendChild(document.createElement("div"));
+            }
+
+            window.requestAnimationFrame(loop);
+        }
+
+        async function loop() {
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            let detected = false;
+        
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+                labelContainer.childNodes[i].innerHTML = classPrediction;
+        
+                // If a class is detected with a high probability
+                if (prediction[i].probability > 0.85) {
+                    detected = true;
+        
+                    // Send detection to the server
+                    await fetch('counter.php', {
+                        method: 'POST',
+                        body: new URLSearchParams({ action: 'update', class: prediction[i].className })
+                    });
+        
+                    // Update the counter on the page
+                    updateCounter();
+                }
+            }
+        }
+        
+        function updateCounter() {
+            fetch('counter.php')
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('counter').innerText = data;
+                });
+        }
+        
+        function resetCounter() {
+            fetch('counter.php', {
+                method: 'POST',
+                body: new URLSearchParams({ action: 'reset' })
+            })
+            .then(() => {
+                document.getElementById('counter').innerText = 0;
+            });
+        }
+        
+    </script>
+</body>
+</html>
